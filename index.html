@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Generator QR</title>
+    <!-- PWA / iOS home screen support -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#071028">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="QR Generator">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root{
+            --card-radius:12px;
+            --control-gap:12px;
+        }
+        html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:#0f1724;color:#e6eef8}
+        .page{min-height:100%;display:flex;align-items:center;justify-content:center;padding:32px}
+        .wrap{width:100%;max-width:920px;display:grid;grid-template-columns:1fr 420px;gap:28px}
+        .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:20px;border-radius:var(--card-radius);box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+        h1{margin:0 0 12px 0;font-size:20px;color:#fff}
+        label{display:block;font-size:13px;color:#c9d6ea;margin-bottom:6px}
+        .controls{display:flex;flex-direction:column;gap:var(--control-gap)}
+        input[type="text"], textarea, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:inherit;font-size:14px}
+        .row{display:flex;gap:10px}
+        .row > *{flex:1}
+        button{padding:10px 12px;border-radius:8px;border:0;background:#2563eb;color:white;font-weight:600;cursor:pointer}
+        button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+
+        /* QR preview card */
+        .preview-card{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;border-radius:12px;background:linear-gradient(180deg,#0b1220,#071021);min-height:360px}
+        .qr-card-inner{background:var(--qr-bg,#fff);padding:16px;border-radius:8px}
+        #qrcode img{display:block;max-width:100%;height:auto}
+        .meta{margin-top:12px;display:flex;gap:8px;align-items:center}
+        .meta a{color:#dbeafe;text-decoration:none;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03)}
+
+        /* Theme specific page backgrounds (visual only) */
+        .theme-blackwhite{background:linear-gradient(180deg,#0b1220,#071021)}
+        .theme-gray{background:linear-gradient(180deg,#16181b,#0f1724)}
+        .theme-darkblue{background:linear-gradient(180deg,#071028,#031026)}
+
+        /* Responsive */
+        @media (max-width:900px){
+            .wrap{grid-template-columns:1fr;}
+        }
+    </style>
+</head>
+<body class="theme-darkblue">
+    <!-- iOS install banner (hidden by default) -->
+    <div id="iosInstallBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:18px;background:rgba(10,14,22,0.92);color:#e6eef8;padding:12px;border-radius:12px;box-shadow:0 8px 24px rgba(2,6,23,0.6);z-index:9999;align-items:center;display:flex;gap:12px">
+        <div style="flex:1;font-size:14px">Adaugă acest site la ecranul principal: atinge <strong>Share</strong> → <strong>Add to Home Screen</strong>.</div>
+        <button id="dismissIosBanner" style="background:transparent;border:1px solid rgba(255,255,255,0.06);color:#dbeafe;padding:8px 10px;border-radius:8px;">Închide</button>
+    </div>
+    <div class="page">
+        <div class="wrap">
+            <div class="panel">
+                <h1>Generator de Cod QR</h1>
+                <div class="controls">
+                    <div>
+                        <label for="dataInput">Text sau URL</label>
+                        <input id="dataInput" type="text" placeholder="Introdu text sau URL" value="https://example.com">
+                    </div>
+
+                    <div class="row">
+                        <div>
+                            <label for="themeSelect">Temă</label>
+                            <select id="themeSelect">
+                                <option value="blackwhite">Negru & Alb</option>
+                                <option value="gray">Gri (tonuri întunecate)</option>
+                                <option value="darkblue" selected>Albastru (ton închis)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="sizeInput">Dimensiune (px)</label>
+                            <input id="sizeInput" type="range" min="128" max="1024" step="8" value="360">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <button id="generateBtn">Generează Cod QR</button>
+                        <button id="downloadBtn" class="ghost" style="display:none">Descarcă PNG</button>
+                    </div>
+
+                    <div style="font-size:13px;color:#9fb0d9">Sfat: folosește contrast ridicat (foreground închis, background deschis) pentru scanare fiabilă.</div>
+                </div>
+            </div>
+
+            <div class="preview-card panel">
+                <div style="width:100%;display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-weight:600;color:#dbeafe">Previzualizare</div>
+                    <div style="font-size:12px;color:#98a8c9">Scanează cu telefonul tău</div>
+                </div>
+
+                <div id="previewArea" style="margin-top:18px;width:100%;display:flex;align-items:center;justify-content:center">
+                    <div class="qr-card-inner" id="qrcode">
+                        <!-- QR image will be injected here -->
+                        <div style="color:#7f8fa6;font-size:13px;padding:20px;text-align:center">Apasă "Generează Cod QR" pentru previzualizare.</div>
+                    </div>
+                </div>
+
+                <div class="meta">
+                    <a id="downloadLink" href="#" download="qrcode.png" style="display:none">Descarcă imagine</a>
+                    <div style="flex:1"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR code generator library (uses toDataURL) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script>
+        const input = document.getElementById('dataInput');
+        const generateBtn = document.getElementById('generateBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const downloadLink = document.getElementById('downloadLink');
+        const qrcodeDiv = document.getElementById('qrcode');
+        const themeSelect = document.getElementById('themeSelect');
+        const sizeRange = document.getElementById('sizeInput');
+
+        function applyPageTheme(theme){
+            document.body.classList.remove('theme-blackwhite','theme-gray','theme-darkblue');
+            if(theme === 'blackwhite') document.body.classList.add('theme-blackwhite');
+            else if(theme === 'gray') document.body.classList.add('theme-gray');
+            else document.body.classList.add('theme-darkblue');
+        }
+
+        function themeColors(theme){
+            // Ensure dark foreground and light background for reliable scanning
+            switch(theme){
+                case 'blackwhite': return {dark:'#000000', light:'#FFFFFF', qrBg:'#ffffff'};
+                case 'gray': return {dark:'#202124', light:'#F7F7F9', qrBg:'#f6f6f8'};
+                case 'darkblue': return {dark:'#062a6a', light:'#ffffff', qrBg:'#ffffff'};
+                default: return {dark:'#000000', light:'#ffffff', qrBg:'#ffffff'};
+            }
+        }
+
+        async function generateQRCode(){
+            const text = input.value.trim();
+            if(!text){
+                alert('Introdu mai întâi textul sau URL-ul.');
+                return;
+            }
+
+            const size = parseInt(sizeRange.value,10) || 360;
+            const theme = themeSelect.value;
+            applyPageTheme(theme);
+            const colors = themeColors(theme);
+
+            // create data URL using qrcode library
+            try{
+                const dataUrl = await QRCode.toDataURL(text, {
+                    errorCorrectionLevel: 'H',
+                    width: size,
+                    margin: 1,
+                    color: {
+                        dark: colors.dark,
+                        light: colors.light
+                    }
+                });
+
+                qrcodeDiv.innerHTML = '';
+                const img = document.createElement('img');
+                img.alt = 'QR Code';
+                img.src = dataUrl;
+                img.width = size;
+                img.height = size;
+                qrcodeDiv.style.background = colors.qrBg;
+                qrcodeDiv.style.display = 'inline-block';
+                qrcodeDiv.appendChild(img);
+
+                // Setup download link and button
+                downloadLink.href = dataUrl;
+                downloadLink.style.display = '';
+                downloadBtn.style.display = '';
+                downloadBtn.onclick = () => {
+                    // trigger download from the link
+                    downloadLink.download = 'qrcode.png';
+                    downloadLink.click();
+                };
+
+            }catch(err){
+                console.error(err);
+                alert('A apărut o eroare la generarea codului QR.');
+            }
+        }
+
+        // Attach handlers
+        generateBtn.addEventListener('click', generateQRCode);
+        themeSelect.addEventListener('change', ()=> applyPageTheme(themeSelect.value));
+
+        // allow Enter to generate
+        input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') generateQRCode(); });
+    </script>
+    <script>
+        // iOS home-screen hint: show a small banner for Safari on iPhone/iPad
+        (function(){
+            function isIos(){
+                return /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+            }
+            function isInStandaloneMode(){
+                return ('standalone' in window.navigator) && window.navigator.standalone;
+            }
+
+            if(isIos() && !isInStandaloneMode()){
+                setTimeout(()=>{
+                    const b = document.getElementById('iosInstallBanner');
+                    if(b) b.style.display = 'flex';
+                }, 600);
+                const dismiss = document.getElementById('dismissIosBanner');
+                if(dismiss) dismiss.addEventListener('click', ()=>{
+                    const b = document.getElementById('iosInstallBanner');
+                    if(b) b.style.display = 'none';
+                });
+            }
+        })();
+    </script>
+</body>
+</html>
